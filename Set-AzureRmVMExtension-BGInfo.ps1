@@ -3,7 +3,7 @@
 * Author:		Jack Stromberg
 * Email:		jstrom@microsoft.com
 * Date:		  8/24/2021
-* Version:	1.0
+* Version:	1.1
 *
 * Changelog
 * v1.0 - Initial Release
