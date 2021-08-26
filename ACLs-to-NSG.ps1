@@ -19,6 +19,12 @@
 * Assumptions:
 *           This script assumes you have single NIC machines
 *           This script will add additional rules if an NSG exists with the same name of <VMName>-NSG
+*           
+* Variables:
+*           $ServiceName is the cloud service you want to want to translate ACLs to NSGs
+*           $region is the region your cloud service is deployed to
+*           $stripACLsAssociateNSGs = $True will remove ACLs and set the NSG to the cloud service
+*           $stripACLsAssociateNSGs = $False will only create the NSG but not associate it or remove the ACLs.
 #>
 
 # Variables
