@@ -2,7 +2,7 @@
 *
 * Author:	Jack Stromberg
 * Email:	jstrom@microsoft.com
-* Date:		4/28/2018
+* Date:		8/31/2021
 * Version:  1.3
 * Docs: https://docs.microsoft.com/en-us/azure/virtual-network/virtual-networks-acl-powershell
 *
