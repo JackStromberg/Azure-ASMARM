@@ -3,7 +3,7 @@
 * Author:	Jack Stromberg
 * Email:	jstrom@microsoft.com
 * Date:		4/28/2018
-* Version:  1.2
+* Version:  1.3
 * Docs: https://docs.microsoft.com/en-us/azure/virtual-network/virtual-networks-acl-powershell
 *
 * Changelog
@@ -12,6 +12,7 @@
 *                                    Added support for rules with a VM that has an NSG with some ACLs, but not on all
 * v1.2 - Last Modified: 4/28/2018 -- Fixed translation of "Permit" to be "Allowed" per NSG rules
 *								  -- If deny and permit rules are in the same ACL, added logic to add a Deny allow rule
+* v1.3 - Last Modified: 8/31/2021 -- Added some additional logging
 *
 * Caution:  Be careful about extended ASCII characters (Japanese/Chinese characters) as ASM/ARM migrations don't parse
 *           these characters properly
@@ -23,7 +24,7 @@
 * Variables:
 *           $ServiceName is the cloud service you want to want to translate ACLs to NSGs
 *           $region is the region your cloud service is deployed to
-*           $stripACLsAssociateNSGs = $True will remove ACLs and set the NSG to the cloud service
+*           $stripACLsAssociateNSGs = $True will remove ACLs and set the NSG to the cloud service (you will be prompted before removal)
 *           $stripACLsAssociateNSGs = $False will only create the NSG but not associate it or remove the ACLs.
 #>
 
@@ -147,6 +148,7 @@ foreach($vm in $VMs){
                 }
 
                 # Associate NSG to the Virtual Machine
+		Write-Host ("Setting NSG {0} for VM {1}...!" -f $nsgName, $vm)
                 Set-AzureNetworkSecurityGroupAssociation -Name $nsgName -VM $vm -ServiceName $ServiceName
             }else{
                 Write-Host "Skipping removal of ACLs and attachment of NSG..."
@@ -157,5 +159,7 @@ foreach($vm in $VMs){
         Write-Host ("No Endpoints for {0}" -f $vm.Name)
     }    
 }
+
+Write-Host ("Script completed!")
 
 # Migrate Resources to ARM
