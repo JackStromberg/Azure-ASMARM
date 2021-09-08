@@ -3,7 +3,7 @@
 * Author:	Jack Stromberg
 * Email:	jstrom@microsoft.com
 * Date:		8/31/2021
-* Version:  1.3
+* Version:  1.4
 * Docs: https://docs.microsoft.com/en-us/azure/virtual-network/virtual-networks-acl-powershell
 *
 * Changelog
@@ -13,6 +13,7 @@
 * v1.2 - Last Modified: 4/28/2018 -- Fixed translation of "Permit" to be "Allowed" per NSG rules
 *								  -- If deny and permit rules are in the same ACL, added logic to add a Deny allow rule
 * v1.3 - Last Modified: 8/31/2021 -- Added some additional logging
+* v1.4 - Last Modified: 9/8/2021  -- Fixed issue with multiple VM endpoints
 *
 * Caution:  Be careful about extended ASCII characters (Japanese/Chinese characters) as ASM/ARM migrations don't parse
 *           these characters properly
@@ -43,7 +44,7 @@ foreach($vm in $VMs){
     Write-Host ("Getting endpoint info for VM {0}..." -f $vm.Name)
 
     # Get endpoints for each VM
-    $endpoints = Get-AzureEndpoint -VM $VMs
+    $endpoints = Get-AzureEndpoint -VM $vm
     if($endpoints.Count -gt 1){
         Write-Host ("{0} endpoints found for VM {1}...  Checking for ACLs..." -f $endpoints.Count,$vm.Name)
         $i = 1
