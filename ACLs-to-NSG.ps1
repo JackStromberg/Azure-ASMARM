@@ -2,8 +2,8 @@
 *
 * Author:	Jack Stromberg
 * Email:	jstrom@microsoft.com
-* Date:		8/31/2021
-* Version:  1.4
+* Date:		9/8/2021
+* Version:  1.5
 * Docs: https://docs.microsoft.com/en-us/azure/virtual-network/virtual-networks-acl-powershell
 *
 * Changelog
@@ -14,6 +14,7 @@
 *								  -- If deny and permit rules are in the same ACL, added logic to add a Deny allow rule
 * v1.3 - Last Modified: 8/31/2021 -- Added some additional logging
 * v1.4 - Last Modified: 9/8/2021  -- Fixed issue with multiple VM endpoints
+* v1.5 - Last Modified: 9/8/2021  -- Added parameter for skipping NSG rule creation (reuse existing NSG as-is)
 *
 * Caution:  Be careful about extended ASCII characters (Japanese/Chinese characters) as ASM/ARM migrations don't parse
 *           these characters properly
@@ -26,13 +27,16 @@
 *           $ServiceName is the cloud service you want to want to translate ACLs to NSGs
 *           $region is the region your cloud service is deployed to
 *           $stripACLsAssociateNSGs = $True will remove ACLs and set the NSG to the cloud service (you will be prompted before removal)
-*           $stripACLsAssociateNSGs = $False will only create the NSG but not associate it or remove the ACLs.
+*           $stripACLsAssociateNSGs = $False will create the NSG based on ACL rules but not associate it or remove the ACLs.
+*           $skipNSGRuleCreation    = $True will use existing NSG as-is
+*           $skipNSGRuleCreation    = $False will create/update existing NSG rules
 #>
 
 # Variables
 $ServiceName = "Test7611"
 $region = "East US"
 $stripACLsAssociateNSGs = $False
+$skipNSGRuleCreation    = $False
 
 # Login to Azure
 Add-AzureAccount
@@ -73,59 +77,63 @@ foreach($vm in $VMs){
         }
 
         # Build NSG Rules
-        foreach($endpoint in $endpoints){
-            # Check if this endpoint has an ACL
-            if($endpoint.Acl.Count -gt 0){
-                Write-Host ("{0} ACL(s) found for endpoint {1}... Checking for an existing NSG..." -f $endpoint.Acl.Count.ToString(),$endpoint.Name)
+        if($skipNSGRuleCreation -eq $False){
+            foreach($endpoint in $endpoints){
+                # Check if this endpoint has an ACL
+                if($endpoint.Acl.Count -gt 0){
+                    Write-Host ("{0} ACL(s) found for endpoint {1}... Checking for an existing NSG..." -f $endpoint.Acl.Count.ToString(),$endpoint.Name)
 
-                $acls = Get-AzureAclConfig -EndpointName $endpoint.Name -VM $vm -ErrorAction Stop
-				$hasPermits = $False # we will use this later to determine ACL rules
-                foreach($acl in $acls){
-                    # Build NSG rule
+                    $acls = Get-AzureAclConfig -EndpointName $endpoint.Name -VM $vm -ErrorAction Stop
+                    $hasPermits = $False # we will use this later to determine ACL rules
+                    foreach($acl in $acls){
+                        # Build NSG rule
+                        $ruleName = "Rule-"+$i
+                        $ActionType = (Get-Culture).TextInfo.ToTitleCase($acl.Action.ToLower())
+                        if($ActionType -match "permit"){
+                            $ActionType = "Allow"
+                            $hasPermits = $True
+                        }
+                        Write-Host ("Adding NSG rule for {0} port {1} with Action {2}..." -f $endpoint.Protocol,$endpoint.LocalPort,$ActionType)
+                        $nsg | Set-AzureNetworkSecurityRule -Name $ruleName -Action $ActionType -Protocol $endpoint.Protocol.ToUpper() -Type Inbound -Priority $priority -SourceAddressPrefix $acl.RemoteSubnet  -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange $endpoint.LocalPort
+                        $priority+=1
+                        $i++
+                    }
+
+                    # Creating NSG to allow all on this endpoint to simulate classic endpoint behavior
+                    # https://docs.microsoft.com/en-us/azure/virtual-network/virtual-networks-acl#permit-and-deny
+                    Write-Host ("Adding NSG rule to {0} all other source traffic Inbound on this NSG to simulate classic endpoint behavior..." -f $acls[0].Action)
                     $ruleName = "Rule-"+$i
-                    $ActionType = (Get-Culture).TextInfo.ToTitleCase($acl.Action.ToLower())
-					if($ActionType -match "permit"){
-						$ActionType = "Allow"
-						$hasPermits = $True
-					}
-                    Write-Host ("Adding NSG rule for {0} port {1} with Action {2}..." -f $endpoint.Protocol,$endpoint.LocalPort,$ActionType)
-                    $nsg | Set-AzureNetworkSecurityRule -Name $ruleName -Action $ActionType -Protocol $endpoint.Protocol.ToUpper() -Type Inbound -Priority $priority -SourceAddressPrefix $acl.RemoteSubnet  -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange $endpoint.LocalPort
-                    $priority+=1
-                    $i++
-                }
-
-                # Creating NSG to allow all on this endpoint to simulate classic endpoint behavior
-                # https://docs.microsoft.com/en-us/azure/virtual-network/virtual-networks-acl#permit-and-deny
-                Write-Host ("Adding NSG rule to {0} all other source traffic Inbound on this NSG to simulate classic endpoint behavior..." -f $acls[0].Action)
-                $ruleName = "Rule-"+$i
-                if($acls[0].Action -eq "deny"){
-				
-					# For ACLs containing Deny, Permit statements, create a deny all rule; else create a default allow all rule
-					if($hasPermits -eq $True){
-						# Create default deny rule
-						$nsg | Set-AzureNetworkSecurityRule -Name $ruleName -Action "Deny" -Protocol $endpoint.Protocol.ToUpper() -Type Inbound -Priority $priority -SourceAddressPrefix INTERNET  -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange $endpoint.LocalPort
-					}else{
-						# Create default allow rule
-						$nsg | Set-AzureNetworkSecurityRule -Name $ruleName -Action "Allow" -Protocol $endpoint.Protocol.ToUpper() -Type Inbound -Priority $priority -SourceAddressPrefix INTERNET  -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange $endpoint.LocalPort
-					}
+                    if($acls[0].Action -eq "deny"){
                     
+                        # For ACLs containing Deny, Permit statements, create a deny all rule; else create a default allow all rule
+                        if($hasPermits -eq $True){
+                            # Create default deny rule
+                            $nsg | Set-AzureNetworkSecurityRule -Name $ruleName -Action "Deny" -Protocol $endpoint.Protocol.ToUpper() -Type Inbound -Priority $priority -SourceAddressPrefix INTERNET  -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange $endpoint.LocalPort
+                        }else{
+                            # Create default allow rule
+                            $nsg | Set-AzureNetworkSecurityRule -Name $ruleName -Action "Allow" -Protocol $endpoint.Protocol.ToUpper() -Type Inbound -Priority $priority -SourceAddressPrefix INTERNET  -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange $endpoint.LocalPort
+                        }
+                        
+                    }else{
+                        # Create default deny rule
+                        $nsg | Set-AzureNetworkSecurityRule -Name $ruleName -Action "Deny" -Protocol $endpoint.Protocol.ToUpper() -Type Inbound -Priority $priority -SourceAddressPrefix INTERNET  -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange $endpoint.LocalPort
+                    }
+
                 }else{
-                    # Create default deny rule
-                    $nsg | Set-AzureNetworkSecurityRule -Name $ruleName -Action "Deny" -Protocol $endpoint.Protocol.ToUpper() -Type Inbound -Priority $priority -SourceAddressPrefix INTERNET  -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange $endpoint.LocalPort
+                    
+                    Write-Host ("No ACLs for endpoint {0} on VM {1}... creating a default allow rule for the port" -f $endpoint.Name,$vm.Name)
+                    # Create default allow rule
+                    $ruleName = "Rule-"+$i
+                    $nsg | Set-AzureNetworkSecurityRule -Name $ruleName -Action "Allow" -Protocol $endpoint.Protocol.ToUpper() -Type Inbound -Priority $priority -SourceAddressPrefix INTERNET  -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange $endpoint.LocalPort
+                
                 }
 
-            }else{
-                
-                Write-Host ("No ACLs for endpoint {0} on VM {1}... creating a default allow rule for the port" -f $endpoint.Name,$vm.Name)
-                # Create default allow rule
-                $ruleName = "Rule-"+$i
-                $nsg | Set-AzureNetworkSecurityRule -Name $ruleName -Action "Allow" -Protocol $endpoint.Protocol.ToUpper() -Type Inbound -Priority $priority -SourceAddressPrefix INTERNET  -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange $endpoint.LocalPort
-            
+                # Increase priority by 10 to give us some room between last ACL rules and next endpoint
+                $priority += 10
+                $i++
             }
-
-            # Increase priority by 10 to give us some room between last ACL rules and next endpoint
-            $priority += 10
-            $i++
+        }else{
+            Write-Host "Skipping NSG rule creation/updates..."
         }
 
         # Strip out ACLs and add NSGs
