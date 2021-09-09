@@ -2,8 +2,8 @@
 *
 * Author:	Jack Stromberg
 * Email:	jstrom@microsoft.com
-* Date:		9/8/2021
-* Version:  1.5
+* Date:		9/9/2021
+* Version:  1.6
 * Docs: https://docs.microsoft.com/en-us/azure/virtual-network/virtual-networks-acl-powershell
 *
 * Changelog
@@ -15,6 +15,7 @@
 * v1.3 - Last Modified: 8/31/2021 -- Added some additional logging
 * v1.4 - Last Modified: 9/8/2021  -- Fixed issue with multiple VM endpoints
 * v1.5 - Last Modified: 9/8/2021  -- Added parameter for skipping NSG rule creation (reuse existing NSG as-is)
+* v1.6 - Last Modified: 9/9/2021  -- Added minor fix to logging
 *
 * Caution:  Be careful about extended ASCII characters (Japanese/Chinese characters) as ASM/ARM migrations don't parse
 *           these characters properly
@@ -157,7 +158,7 @@ foreach($vm in $VMs){
                 }
 
                 # Associate NSG to the Virtual Machine
-		Write-Host ("Setting NSG {0} for VM {1}...!" -f $nsgName, $vm)
+		Write-Host ("Setting NSG {0} for VM {1}...!" -f $nsgName, $vm.Name)
                 Set-AzureNetworkSecurityGroupAssociation -Name $nsgName -VM $vm -ServiceName $ServiceName
             }else{
                 Write-Host "Skipping removal of ACLs and attachment of NSG..."
